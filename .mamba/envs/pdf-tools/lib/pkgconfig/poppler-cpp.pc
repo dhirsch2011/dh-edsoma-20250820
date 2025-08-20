@@ -1,0 +1,12 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+libdir=/workspace/.mamba/envs/pdf-tools/lib
+includedir=/workspace/.mamba/envs/pdf-tools/include
+
+Name: poppler-cpp
+Description: cpp backend for Poppler PDF rendering library
+Version: 25.07.0
+Requires: 
+Requires.private: poppler = 25.07.0
+
+Libs: -L${libdir} -lpoppler-cpp
+Cflags: -I${includedir}/poppler/cpp

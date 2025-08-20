@@ -1,0 +1,12 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/leptonica
+
+Name: leptonica
+Description: An open source C library for efficient image processing and image analysis operations
+Version: 1.83.1
+Libs: -L${libdir} -lleptonica
+Libs.private: -L/workspace/.mamba/envs/pdf-tools/lib -lz -L/workspace/.mamba/envs/pdf-tools/lib -lpng16 -L/workspace/.mamba/envs/pdf-tools/lib -ljpeg -L/workspace/.mamba/envs/pdf-tools/lib -lopenjp2 -lgif -L/workspace/.mamba/envs/pdf-tools/lib -ltiff -L/workspace/.mamba/envs/pdf-tools/lib -lwebp -L/workspace/.mamba/envs/pdf-tools/lib -lwebpmux
+Cflags: -I${includedir}
+

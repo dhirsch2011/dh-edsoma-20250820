@@ -1,0 +1,13 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+modules=1
+
+Name: libXML
+Version: 2.13.8
+Description: libXML library version2.
+Requires.private:  icu-i18n
+Libs: -L${libdir} -lxml2 
+Libs.private:  -L/workspace/.mamba/envs/pdf-tools/lib -lz -L/workspace/.mamba/envs/pdf-tools/lib -llzma  -L/workspace/.mamba/envs/pdf-tools/lib -liconv -lm   
+Cflags: -I${includedir}/libxml2 -I/workspace/.mamba/envs/pdf-tools/include 

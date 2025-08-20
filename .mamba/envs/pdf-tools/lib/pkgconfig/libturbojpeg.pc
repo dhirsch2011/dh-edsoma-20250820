@@ -1,0 +1,10 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+exec_prefix=/workspace/.mamba/envs/pdf-tools
+libdir=/workspace/.mamba/envs/pdf-tools/lib
+includedir=/workspace/.mamba/envs/pdf-tools/include
+
+Name: libturbojpeg
+Description: A SIMD-accelerated JPEG codec that provides the TurboJPEG API
+Version: 3.1.0
+Libs: -L${libdir} -lturbojpeg
+Cflags: -I${includedir}

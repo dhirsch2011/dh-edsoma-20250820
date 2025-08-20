@@ -1,0 +1,13 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+exec_prefix=/workspace/.mamba/envs/pdf-tools
+libdir=/workspace/.mamba/envs/pdf-tools/lib
+includedir=/workspace/.mamba/envs/pdf-tools/include
+
+Name: FreeType 2
+URL: https://freetype.org
+Description: A free, high-quality, and portable font engine.
+Version: 26.2.20
+Requires: 
+Libs: -L/workspace/.mamba/envs/pdf-tools/lib -lfreetype
+Libs.private: 
+Cflags: -I${includedir}/freetype2

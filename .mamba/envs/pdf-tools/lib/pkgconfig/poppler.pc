@@ -1,0 +1,10 @@
+prefix=/workspace/.mamba/envs/pdf-tools
+libdir=/workspace/.mamba/envs/pdf-tools/lib
+includedir=/workspace/.mamba/envs/pdf-tools/include
+
+Name: poppler
+Description: PDF rendering library
+Version: 25.07.0
+
+Libs: -L${libdir} -lpoppler
+Cflags: -I${includedir}/poppler

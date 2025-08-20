@@ -1,0 +1,35 @@
+{
+    "arch": "x86_64",
+    "build": "h4852527_4",
+    "build_number": 4,
+    "build_string": "h4852527_4",
+    "channel": "conda-forge",
+    "constrains": [],
+    "depends": [
+        "libstdcxx 15.1.0 h8f9b012_4"
+    ],
+    "extracted_package_dir": "/home/ubuntu/.local/share/mamba/pkgs/libstdcxx-ng-15.1.0-h4852527_4",
+    "files": [],
+    "fn": "libstdcxx-ng-15.1.0-h4852527_4.conda",
+    "license": "GPL-3.0-only WITH GCC-exception-3.1",
+    "link": {
+        "source": "/home/ubuntu/.local/share/mamba/pkgs/libstdcxx-ng-15.1.0-h4852527_4",
+        "type": 1
+    },
+    "md5": "2d34729cbc1da0ec988e57b13b712067",
+    "name": "libstdcxx-ng",
+    "package_tarball_full_path": "/home/ubuntu/.local/share/mamba/pkgs/libstdcxx-ng-15.1.0-h4852527_4.tar.bz2",
+    "paths_data": {
+        "paths": [],
+        "paths_version": 1
+    },
+    "platform": "linux",
+    "requested_spec": "",
+    "sha256": "81c841c1cf4c0d06414aaa38a249f9fdd390554943065c3a0b18a9fb7e8cc495",
+    "size": 29317,
+    "subdir": "linux-64",
+    "timestamp": 1753903924,
+    "track_features": "",
+    "url": "https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-ng-15.1.0-h4852527_4.conda",
+    "version": "15.1.0"
+}
