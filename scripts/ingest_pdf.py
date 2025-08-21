@@ -164,7 +164,7 @@ def write_outputs(
     os.makedirs(per_page_root, exist_ok=True)
     for i in range(len(page_texts)):
         page_num = i + 1
-        page_dir = os.path.join(per_page_root, f"{page_num:0{pad_width}d}")
+        page_dir = os.path.join(per_page_root, f"GNM_202509_{page_num:0{pad_width}d}")
         os.makedirs(page_dir, exist_ok=True)
 
         image_path = os.path.join(page_dir, "image.png")
