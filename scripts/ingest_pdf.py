@@ -86,6 +86,47 @@ def choose_extractor(pdf_path: str) -> Tuple[List[str], str]:
     return pypdf_pages, "pypdf"
 
 
+def determine_zero_pad_width(num_pages: int) -> int:
+	"""Return a reasonable zero-pad width based on the number of pages (min 3)."""
+	return max(3, len(str(num_pages)))
+
+
+def render_page_to_png(pdf_path: str, page_index_zero_based: int, output_png_path: str, dpi: int = 200) -> None:
+	"""Render a single PDF page to a PNG file using pypdfium2 at the given DPI."""
+	ensure_package_installed("pypdfium2")
+	# Pillow is required for saving the image conveniently
+	ensure_package_installed("Pillow")
+
+	import pypdfium2 as pdfium  # type: ignore
+
+	# Render scale factor: PDF default resolution ~72 DPI
+	scale = max(1.0, float(dpi) / 72.0)
+	pdf = pdfium.PdfDocument(pdf_path)
+	if page_index_zero_based < 0 or page_index_zero_based >= len(pdf):
+		raise IndexError("page index out of range")
+	page = pdf[page_index_zero_based]
+	bitmap = page.render(scale=scale)
+	image = bitmap.to_pil()
+	# Ensure parent dir exists
+	os.makedirs(os.path.dirname(output_png_path), exist_ok=True)
+	image.save(output_png_path, format="PNG")
+
+
+def ocr_png_to_text(png_path: str) -> str:
+	"""OCR the given PNG using system tesseract CLI, returning extracted text."""
+	# Use tesseract CLI to avoid extra Python deps; language defaults to eng
+	try:
+		proc = subprocess.run(
+			["tesseract", png_path, "stdout", "-l", "eng", "--psm", "3"],
+			check=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.PIPE,
+		)
+		return proc.stdout.decode("utf-8", errors="replace")
+	except Exception as exc:
+		return f""  # Return empty text on failure
+
+
 def write_outputs(
     pdf_path: str,
     output_dir: str,
@@ -98,6 +139,7 @@ def write_outputs(
     text_out = os.path.join(output_dir, f"{stem}.txt")
     jsonl_out = os.path.join(output_dir, f"{stem}.pages.jsonl")
     manifest_out = os.path.join(output_dir, f"{stem}.manifest.json")
+    per_page_root = os.path.join(output_dir, stem)
 
     # Full text with clear page separators
     full_text = "\n\n".join(
@@ -117,6 +159,33 @@ def write_outputs(
             }
             f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
+    # Per-page folders with zero-padding, containing image.png and ocr.txt
+    pad_width = determine_zero_pad_width(len(page_texts))
+    os.makedirs(per_page_root, exist_ok=True)
+    for i in range(len(page_texts)):
+        page_num = i + 1
+        page_dir = os.path.join(per_page_root, f"{page_num:0{pad_width}d}")
+        os.makedirs(page_dir, exist_ok=True)
+
+        image_path = os.path.join(page_dir, "image.png")
+        ocr_txt_path = os.path.join(page_dir, "ocr.txt")
+
+        # Render image for this page
+        try:
+            render_page_to_png(pdf_path, i, image_path, dpi=220)
+        except Exception as exc:
+            # If rendering fails, create an empty placeholder file
+            with open(image_path, "wb") as ef:
+                ef.write(b"")
+
+        # OCR the image into text
+        try:
+            ocr_text = ocr_png_to_text(image_path)
+        except Exception:
+            ocr_text = ""
+        with open(ocr_txt_path, "w", encoding="utf-8") as tf:
+            tf.write(ocr_text)
+
     file_size = os.path.getsize(pdf_path)
     sha256 = compute_sha256(pdf_path)
     manifest = {
@@ -129,6 +198,7 @@ def write_outputs(
         "extractor": extractor_name,
         "output_text_path": os.path.abspath(text_out),
         "output_pages_jsonl_path": os.path.abspath(jsonl_out),
+        "per_page_dir": os.path.abspath(per_page_root),
         "created_at": dt.datetime.utcnow().isoformat() + "Z",
     }
     with open(manifest_out, "w", encoding="utf-8") as f:
