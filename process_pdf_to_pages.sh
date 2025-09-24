@@ -48,13 +48,20 @@ if [[ -z "${INPUT}" ]]; then
   exit 1
 fi
 
-# Dependency checks (no auto-install to keep it portable)
-for cmd in pdfinfo pdfseparate curl python3 base64; do
+# Dependency checks (poppler tools optional; Python fallback used if missing)
+for cmd in curl python3 base64; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing dependency: $cmd (install poppler-utils for pdfinfo/pdfseparate; install curl, python3; ensure base64 available)" >&2
+    echo "Missing dependency: $cmd (need curl, python3, base64)" >&2
     exit 1
   fi
 done
+
+HAS_PDFINFO=0
+HAS_PDFSEPARATE=0
+HAVE_PYPDF2=0
+USE_FULL_OCR=0
+if command -v pdfinfo >/dev/null 2>&1; then HAS_PDFINFO=1; fi
+if command -v pdfseparate >/dev/null 2>&1; then HAS_PDFSEPARATE=1; fi
 
 API_KEY="${OCR_SPACE_API_KEY:-helloworld}"
 API_ENDPOINT="https://api.ocr.space/parse/image"
@@ -70,10 +77,61 @@ else
   cp "${INPUT}" "${INPUT_PDF}"
 fi
 
-TOTAL_PAGES="$(pdfinfo "${INPUT_PDF}" | awk -F: '/^Pages:/ {gsub(/ /,"",$2); print $2}')"
-if [[ -z "${TOTAL_PAGES}" ]]; then
-  echo "Could not determine page count for ${INPUT_PDF}" >&2
-  exit 2
+PY_PDF="python3"  # Python used for PyPDF2 tasks if needed
+if (( HAS_PDFINFO == 1 )); then
+  TOTAL_PAGES="$(pdfinfo "${INPUT_PDF}" | awk -F: '/^Pages:/ {gsub(/ /,"",$2); print $2}')"
+else
+  # Try to use PyPDF2 if it's available in system site-packages
+  if ${PY_PDF} - <<'PY' >/dev/null 2>&1
+import sys
+import PyPDF2  # noqa: F401
+PY
+  then
+    HAVE_PYPDF2=1
+    TOTAL_PAGES="$(${PY_PDF} - "${INPUT_PDF}" << 'PY'
+import sys
+from PyPDF2 import PdfReader
+path = sys.argv[1]
+reader = PdfReader(path)
+print(len(reader.pages))
+PY
+)"
+  else
+    # Last-resort: OCR the whole PDF once and infer number of pages from results
+    USE_FULL_OCR=1
+    ALL_JSON="${TMP_ROOT}/all.json"
+    curl -sS -X POST -H "apikey: ${API_KEY}" \
+      --connect-timeout 10 --max-time 600 \
+      --retry 2 --retry-all-errors --retry-delay 2 \
+      -F "file=@${INPUT_PDF};type=application/pdf" \
+      -F "language=eng" \
+      -F "OCREngine=2" \
+      -F "isOverlayRequired=false" \
+      -F "scale=true" \
+      -F "detectOrientation=true" \
+      -F "isTable=false" \
+      -F "filetype=pdf" \
+      "${API_ENDPOINT}" > "${ALL_JSON}" || true
+    TOTAL_PAGES="$(python3 - "${ALL_JSON}" << 'PY'
+import sys, json, io
+path = sys.argv[1]
+try:
+    data = json.load(io.open(path, 'r', encoding='utf-8', errors='ignore'))
+    arr = data.get('ParsedResults') or []
+    print(len(arr))
+except Exception:
+    print('')
+PY
+)"
+  fi
+fi
+if [[ -z "${TOTAL_PAGES}" || "${TOTAL_PAGES}" == "0" ]]; then
+  if (( USE_FULL_OCR == 1 )); then
+    TOTAL_PAGES=1
+  else
+    echo "Could not determine page count for ${INPUT_PDF}" >&2
+    exit 2
+  fi
 fi
 
 START=1
@@ -93,20 +151,18 @@ pad() { printf "%0${WIDTH}d" "$1"; }
 ocr_page() {
   # args: page_pdf out_json
   local page_pdf="$1" out_json="$2"
-  # Encode PDF as data URI for OCR.Space
-  local b64; b64="$(base64 "${page_pdf}" | tr -d '\n')"
-  # Retry and timeouts for resilience
+  # Upload PDF directly via multipart to avoid huge command args
   curl -sS -X POST -H "apikey: ${API_KEY}" \
     --connect-timeout 10 --max-time 120 \
     --retry 3 --retry-all-errors --retry-delay 2 \
-    --data-urlencode "base64Image=data:application/pdf;base64,${b64}" \
-    --data-urlencode "language=eng" \
-    --data-urlencode "OCREngine=2" \
-    --data-urlencode "isOverlayRequired=false" \
-    --data-urlencode "scale=true" \
-    --data-urlencode "detectOrientation=true" \
-    --data-urlencode "isTable=false" \
-    --data-urlencode "filetype=pdf" \
+    -F "file=@${page_pdf};type=application/pdf" \
+    -F "language=eng" \
+    -F "OCREngine=2" \
+    -F "isOverlayRequired=false" \
+    -F "scale=true" \
+    -F "detectOrientation=true" \
+    -F "isTable=false" \
+    -F "filetype=pdf" \
     "${API_ENDPOINT}" > "${out_json}" || true
 }
 
@@ -163,11 +219,52 @@ for (( i=START; i<=END; i++ )); do
 
   mkdir -p "${DEST_DIR}"
 
-  # pdfseparate requires %d in the output filename template
-  pdfseparate -f "${i}" -l "${i}" "${INPUT_PDF}" "${PAGES_TMP}/page-%d.pdf"
+  if (( USE_FULL_OCR == 1 )); then
+    :
+  elif (( HAS_PDFSEPARATE == 1 )); then
+    # pdfseparate requires %d in the output filename template; write to unique tmp then rename
+    pdfseparate -f "${i}" -l "${i}" "${INPUT_PDF}" "${PAGES_TMP}/sep-${i}-%d.pdf"
+    mv "${PAGES_TMP}/sep-${i}-1.pdf" "${PAGE_PDF}"
+  elif (( HAVE_PYPDF2 == 1 )); then
+    # Python fallback to extract a single page
+    "${PY_PDF}" - "${INPUT_PDF}" "${PAGE_PDF}" "${i}" << 'PY'
+import sys
+from PyPDF2 import PdfReader, PdfWriter
+inp, outp, idx_str = sys.argv[1], sys.argv[2], sys.argv[3]
+page_index = int(idx_str) - 1
+reader = PdfReader(inp)
+if page_index < 0 or page_index >= len(reader.pages):
+    raise SystemExit(f"Invalid page index {page_index+1}")
+writer = PdfWriter()
+writer.add_page(reader.pages[page_index])
+with open(outp, 'wb') as f:
+    writer.write(f)
+PY
+  else
+    :
+  fi
 
-  ocr_page "${PAGE_PDF}" "${JSON_TMP}"
-  parse_json_to_text "${JSON_TMP}" "${RAW_TXT}"
+  if (( USE_FULL_OCR == 1 )); then
+    # Extract page i text from ALL_JSON
+    python3 - "${ALL_JSON}" "${RAW_TXT}" "${i}" << 'PY'
+import sys, json, io
+src, outp, idx_str = sys.argv[1], sys.argv[2], sys.argv[3]
+page_index = int(idx_str) - 1
+try:
+    data = json.load(io.open(src, 'r', encoding='utf-8', errors='ignore'))
+    arr = data.get('ParsedResults') or []
+    if 0 <= page_index < len(arr):
+        t = (arr[page_index].get('ParsedText') or '').strip()
+    else:
+        t = ''
+except Exception:
+    t = ''
+io.open(outp, 'w', encoding='utf-8').write(t)
+PY
+  else
+    ocr_page "${PAGE_PDF}" "${JSON_TMP}"
+    parse_json_to_text "${JSON_TMP}" "${RAW_TXT}"
+  fi
   normalize_one_sentence "${RAW_TXT}" "${OUT_TXT}"
 
   echo "${OUT_TXT}"
